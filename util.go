@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -12,32 +13,37 @@ import (
 var internalCache *cache.Cache
 
 func init() {
-	internalCache = cache.New(24*time.Hour, 10*time.Minute)
+	//internalCache = cache.New(24*time.Hour, 24*time.Hour)
+	internalCache = cache.New(10*time.Minute, 10*time.Minute)
 }
 
-func parseRequest(queryStringKey string, r *http.Request) (backend *url.URL, err error) {
-	backend, err = url.Parse(r.FormValue(queryStringKey))
+func parseRequest(queryStringKey string, r *http.Request) (backendHost string, err error) {
+	queryVal := r.FormValue(queryStringKey)
+	if queryVal != "" {
+		backend, err := url.Parse(queryVal)
+		if err == nil {
+			backendHost = backend.Host
+		}
+	} else {
+		err = fmt.Errorf("can't find %s in query", queryStringKey)
+	}
 	return
 }
 
 // 1. lookup in cache using request host name as key, if NOT found
 // 2. parse request url(query string) for next request, AND cache it.
-func findBackend(queryStringKey string, r *http.Request) (backend *url.URL, err error) {
+func findBackend(queryStringKey string, r *http.Request) (backendHost string, err error) {
 	cacheKey := r.Host
 	val, found := internalCache.Get(cacheKey)
 	if found {
-		backend, err = url.Parse(val.(string))
+		backendHost = val.(string)
 		return
 	}
-	backend, err = parseRequest(queryStringKey, r)
+	backendHost, err = parseRequest(queryStringKey, r)
 	if err != nil {
 		return
 	}
-	if backend.Scheme == "" {
-		backend.Scheme = "http"
-		backend, _ = url.Parse(backend.String())
-	}
-	log.Println("set cache", cacheKey, backend.String())
-	internalCache.Set(cacheKey, backend.String(), 0)
+	log.Println("set cache", cacheKey, "->", backendHost)
+	internalCache.Set(cacheKey, backendHost, 0)
 	return
 }

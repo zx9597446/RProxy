@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 )
 
 type handle struct {
@@ -11,31 +12,25 @@ type handle struct {
 }
 
 func (this *handle) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	remote, err := findBackend(this.queryStringKey, r)
-	if err != nil {
-		log.Fatalln(err)
+	log.Println("request:", r.URL.Host+r.URL.String())
+	remoteHost, err := findBackend(this.queryStringKey, r)
+	if err != nil || remoteHost == "" {
+		log.Println("findBackend", err, "remoteHost:", remoteHost)
+		return
 	}
-	//dialer := &net.Dialer{
-	//Timeout:   30 * time.Second,
-	//KeepAlive: 30 * time.Second,
-	//DualStack: true,
-	//}
-	//http.DefaultTransport.(*http.Transport).DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-	//remote := strings.Split(addr, ":")
-	//if cmd.ip == "" {
-	//resolver := dns_resolver.New([]string{"114.114.114.114", "114.114.115.115", "119.29.29.29", "223.5.5.5", "8.8.8.8", "208.67.222.222", "208.67.220.220"})
-	//resolver.RetryTimes = 5
-	//ip, err := resolver.LookupHost(remote[0])
-	//if err != nil {
-	//log.Println(err)
-	//}
-	//cmd.ip = ip[0].String()
-	//}
-	//addr = cmd.ip + ":" + remote[1]
-	//return dialer.DialContext(ctx, network, addr)
-	//}
-	proxy := httputil.NewSingleHostReverseProxy(remote)
-	log.Println("proxy", r.Host, remote.Host)
-	r.Host = remote.Host
+	remoteURL, err := url.Parse(r.URL.String())
+	if err != nil {
+		log.Println("parse url:", err)
+		return
+	}
+	remoteURL.Host = remoteHost
+	remoteURL.Path = "/"
+	if remoteURL.Scheme == "" {
+		remoteURL.Scheme = "http"
+		remoteURL, _ = url.Parse(remoteURL.String())
+	}
+	log.Println("proxy", r.URL.Host+r.URL.String(), "->", remoteURL.String())
+	proxy := httputil.NewSingleHostReverseProxy(remoteURL)
+	r.Host = remoteHost
 	proxy.ServeHTTP(w, r)
 }
